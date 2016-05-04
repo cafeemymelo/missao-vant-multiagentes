@@ -1,52 +1,38 @@
 ;;define os tipos de agentes
 breed [ vants ]
 breed [ pois ]
-breed [ quartel ]
+
+patches-own [
+  chemical
+]
 
 ;;declara-se as variáveis globais necessárias
-globals [ pois-sendo-seguidos tempo ]
 
 ;;implementa-se os métodos principais
 to inicializar
-
   ;;chama o método reset
   reset
-
-  ;;cria o quartel
-  create-quartel 1 [
-    set shape "house colonial"
-    set size 4
-    set color yellow
-    setxy (min-pxcor + 2) (max-pycor - 2)
-  ]
-
   ;;define os pois
   create-pois mum-pontos-interesse[
-    set heading -80
     set shape "car top" ;;define a aparencia dos pois
-    set size 2
+    set size 4
     set color green
     setxy (min-pxcor + 2) (max-pycor - 5)
   ]
-
   ;;define os vants
   create-vants num-vants [
-    set heading 90
     set shape "vant" ;;define o estilo criado para representar os vants
-    set size 2 ;;define o tamsnho dos vants
+    set size 4 ;;define o tamsnho dos vants
     set color black ;;define a cor padrão dos vants
     setxy pxcor pycor ;;oloca os vants no cenário
     ;;pd ;;faz com que os vants trassem sua rota
   ]
-
 end
 
 to reset
   ;;limpa tudo
   ca
   ;;inicializa as variaveis
-  set pois-sendo-seguidos 0
-  set tempo 0
   set num-vants 4
   set mum-pontos-interesse 4
   reset-ticks
@@ -58,31 +44,68 @@ end
 
 to executar
   ask vants[
-    fd 2
+    if (chemical >= 0.1)[
+      uphill-chemical
+    ]
+    fd 1
   ]
-  set tempo tempo + 1
-  plotxy tempo pois-sendo-seguidos
+  ask pois[
+    move-poi
+  ]
+  diffuse chemical taxa-de-difusao
+  ask patches [
+    set chemical chemical * (100 - taxa-de-evaporacao) / 100
+    recolor-patch
+  ]
   tick
 end
 
 ;;implementa-se os métodos secundários
 
-to seguir-poi
-
+to move-poi
+  ask pois[
+    fd 1
+    set chemical chemical + 10
+  ]
 end
 
-to divide-formacao
+to recolor-patch
+  ifelse chemical > 1[
+    set pcolor scale-color green chemical 5 0.1
+  ][
+    set pcolor brown
+  ]
+end
 
+to uphill-chemical
+  let scent-ahead chemical-scent-at-angle   0
+  let scent-right chemical-scent-at-angle  45
+  let scent-left  chemical-scent-at-angle -45
+  if (scent-right > scent-ahead) or (scent-left > scent-ahead)[
+    ifelse scent-right > scent-left[
+      rt 45
+    ][
+      lt 45
+    ]
+  ]
+end
+
+to-report chemical-scent-at-angle [angle]
+  let p patch-right-and-ahead angle 1
+  if p = nobody [
+    report 0
+  ]
+  report [chemical] of p
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
 210
 10
-670
-491
-22
-22
-10.0
+1225
+646
+100
+60
+5.0
 1
 10
 1
@@ -92,12 +115,12 @@ GRAPHICS-WINDOW
 1
 1
 1
--22
-22
--22
-22
-0
-0
+-100
+100
+-60
+60
+1
+1
 0
 ticks
 30.0
@@ -183,45 +206,35 @@ mum-pontos-interesse
 NIL
 HORIZONTAL
 
-PLOT
-5
-260
-201
-485
-Monitoramento
-tempo
-pois-sendo-seguidos
-0.0
-1000.0
-0.0
-1000.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "plot count turtles"
-
-MONITOR
-6
-159
-202
-204
-NIL
-pois-sendo-seguidos
-17
+SLIDER
+13
+162
+185
+195
+taxa-de-difusao
+taxa-de-difusao
+0
 1
-11
-
-MONITOR
-6
-210
-201
-255
-NIL
-tempo
-17
+0.8
+0.1
 1
-11
+NIL
+HORIZONTAL
+
+SLIDER
+18
+207
+172
+240
+taxa-de-evaporacao
+taxa-de-evaporacao
+0
+20
+4.5
+0.5
+1
+%
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
