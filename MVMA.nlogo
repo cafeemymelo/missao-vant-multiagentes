@@ -6,18 +6,29 @@ patches-own [
   chemical
 ]
 
+pois-own [
+  leader
+  follower
+]
+
 ;;declara-se as variáveis globais necessárias
+globals[ count-group ]
 
 ;;implementa-se os métodos principais
 to inicializar
-  ;;chama o método reset
-  reset
+  ca
+  reset-ticks
+  ask patches[
+    set pcolor brown
+  ]
   ;;define os pois
   create-pois mum-pontos-interesse[
     set shape "car top" ;;define a aparencia dos pois
     set size 4
     set color green
     setxy (min-pxcor + 2) (max-pycor - 5)
+    set leader nobody
+    set follower nobody
   ]
   ;;define os vants
   create-vants num-vants [
@@ -33,10 +44,15 @@ to reset
   ;;limpa tudo
   ca
   ;;inicializa as variaveis
+  set count-group 0
   set num-vants 4
   set mum-pontos-interesse 4
   set taxa-de-difusao 0.6
   set taxa-de-evaporacao 10
+  set menor-raio 5
+  set maior-raio 50
+  set oscilacao 70
+  set num-ticks 500
   reset-ticks
   ;;pinta os patches de marrom
   ask patches[
@@ -52,9 +68,14 @@ to executar
     fd 1
   ]
   ask pois[
-    set heading 160
+    if leader = nobody
+      [ attach-turtle ]
+    turn-turtle
+    unlink-turtle
     fd 1
     set chemical chemical + 10
+    if count-group > 0
+      [set count-group count-group + 1]
   ]
   diffuse chemical taxa-de-difusao
   ask patches [
@@ -65,6 +86,39 @@ to executar
 end
 
 ;;implementa-se os métodos secundários
+
+to attach-turtle  ;; turtle procedure
+  ;;inicia o contador
+  set count-group count-group + 1
+  ;; find a random patch to test inside the donut
+  let xd menor-raio + random (maior-raio - menor-raio)
+  let yd menor-raio + random (maior-raio - menor-raio)
+  if random 2 = 0 [ set xd (- xd) ]
+  if random 2 = 0 [ set yd (- yd) ]
+  ;; check for free turtles on that patch
+  let candidate one-of (pois-at xd yd) with [follower = nobody]
+  ;; if we didn't find a suitable turtle, stop
+  if candidate = nobody [ stop ]
+  ;; we're all set, so latch on!
+  ask candidate [ set follower myself ]
+  set leader candidate
+end
+
+to unlink-turtle
+  if count-group > num-ticks[
+    set count-group 0
+    set leader nobody
+  ]
+end
+
+to turn-turtle  ;; turtle procedure
+  ;; if we are still unattached...
+  ifelse leader = nobody
+  ;; do a somewhat random glide
+  [ rt random-float 70 - random-float 70 ]
+  ;; otherwise follow the leader
+  [ face leader ]
+end
 
 to recolor-patch
   ifelse chemical > 1[
@@ -98,9 +152,9 @@ end
 GRAPHICS-WINDOW
 210
 10
-1225
+675
 496
-100
+45
 45
 5.0
 1
@@ -112,8 +166,8 @@ GRAPHICS-WINDOW
 1
 1
 1
--100
-100
+-45
+45
 -45
 45
 1
@@ -174,10 +228,10 @@ NIL
 1
 
 SLIDER
-6
-83
-202
-116
+8
+107
+204
+140
 num-vants
 num-vants
 0
@@ -189,10 +243,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-6
-120
-202
-153
+8
+144
+204
+177
 mum-pontos-interesse
 mum-pontos-interesse
 0
@@ -204,10 +258,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-6
-158
+8
 202
-191
+204
+235
 taxa-de-difusao
 taxa-de-difusao
 0
@@ -219,10 +273,10 @@ taxa-de-difusao
 HORIZONTAL
 
 SLIDER
-6
-195
-203
-228
+8
+239
+205
+272
 taxa-de-evaporacao
 taxa-de-evaporacao
 0
@@ -232,6 +286,96 @@ taxa-de-evaporacao
 1
 %
 HORIZONTAL
+
+SLIDER
+9
+300
+206
+333
+menor-raio
+menor-raio
+0
+100
+5
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+10
+337
+206
+370
+maior-raio
+maior-raio
+0
+100
+50
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+10
+374
+206
+407
+oscilacao
+oscilacao
+0
+100
+70
+1
+1
+NIL
+HORIZONTAL
+
+TEXTBOX
+11
+280
+161
+298
+Split/Merge POI:
+12
+0.0
+1
+
+SLIDER
+10
+411
+206
+444
+num-ticks
+num-ticks
+0
+10000
+500
+1
+1
+NIL
+HORIZONTAL
+
+TEXTBOX
+9
+183
+159
+201
+Feromônio:
+12
+0.0
+1
+
+TEXTBOX
+9
+88
+159
+106
+Ambiente:
+12
+0.0
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
