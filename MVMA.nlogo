@@ -1,142 +1,265 @@
-;;define os tipos de agentes
-breed [ vants ]
-breed [ pois ]
+breed [targets target]
+targets-own [ ttype done discovered typecolor leader convoy-time convoy-timeout]
 
-patches-own [
-  chemical
-]
+breed [agents agent]
+agents-own [ ttype  ttarget typecolor follow-time]
 
-pois-own [
-  leader
-  follower
-]
+patches-own [chemical visited]
 
-;;declara-se as variáveis globais necessárias
-globals[ count-group ]
+globals [total-discovered total-treated tps total-iteration total-ticks]
 
-;;implementa-se os métodos principais
-to inicializar
-  ca
-  reset-ticks
-  ask patches[
-    set pcolor brown
+to setup
+  set total-discovered 0
+  set total-treated 0
+  set tps 30
+
+  create-agents numero-de-vants[
+    set ttype random 3
+    choose-color
+    set color typecolor
+    set shape "vant"
+    set ttarget  nobody
+    set size 2
+    set pen-size 0.5
+    set follow-time 30 * tps
   ]
-  ;;define os pois
-  create-pois mum-pontos-interesse[
-    set shape "car top" ;;define a aparencia dos pois
-    set size 4
-    set color green
-    setxy (min-pxcor + 2) (max-pycor - 5)
+
+  ask patches[
+    set visited false
+  ]
+
+  create-targets numero-de-pois[
+    set ttype random 3
+    choose-color
+    set color typecolor
+    choose-shape
+    set done  false
+    set discovered  false
+    set size 2
     set leader nobody
-    set follower nobody
+    setxy random-xcor random-ycor
+    set convoy-time 0
+    set convoy-timeout 0
   ]
-  ;;define os vants
-  create-vants num-vants [
-    set shape "vant" ;;define o estilo criado para representar os vants
-    set size 4 ;;define o tamsnho dos vants
-    set color black ;;define a cor padrão dos vants
-    setxy pxcor pycor ;;oloca os vants no cenário
-    ;;pd ;;faz com que os vants trassem sua rota
-  ]
-end
 
-to reset
-  ;;limpa tudo
-  ca
-  ;;inicializa as variaveis
-  set count-group 0
-  set num-vants 4
-  set mum-pontos-interesse 4
-  set taxa-de-difusao 0.6
-  set taxa-de-evaporacao 10
-  set menor-raio 5
-  set maior-raio 50
-  set oscilacao 70
-  set num-ticks 500
   reset-ticks
-  ;;pinta os patches de marrom
-  ask patches[
-    set pcolor brown
-  ]
 end
 
-to executar
-  ask vants[
-    if (chemical >= 0.1)[
-      uphill-chemical
+to go
+  ask agents [
+    set chemical chemical + 1
+    ifelse ttarget != nobody[
+      set heading towards ttarget
+      if (distance ttarget) < 1[
+        set follow-time follow-time - 1
+        if (follow-time <= 0)[
+          set follow-time 30 * tps
+          ask ttarget [die]
+          set ttarget nobody
+          set total-treated (total-treated + 1)
+        ]
+      ]
     ]
-    fd 1
+    [
+      if (chemical >= 0.1)[
+        downhill-chemical
+      ]
+    ]
+    jump calculate-speed velocidade-vant
+    set visited true
   ]
-  ask pois[
-    if leader = nobody
-      [ attach-turtle ]
-    turn-turtle
-    unlink-turtle
-    fd 1
-    set chemical chemical + 10
-    if count-group > 0
-      [set count-group count-group + 1]
+
+  ask targets   [
+    ifelse (leader = nobody)[
+      join-convoy
+      jump calculate-speed velocidade-poi
+    ]
+    [
+      ifelse (convoy-timeout = 0)[
+        join-convoy
+      ]
+      [
+        set convoy-timeout convoy-timeout - 1
+      ]
+      set convoy-time convoy-time + 1
+      ifelse ((convoy-time > 1800) and (convoy-timeout < 0))[
+        set convoy-timeout 600
+        rt 90
+      ]
+      [
+        if(convoy-timeout < 0)[
+          face leader
+        ]
+      ]
+      jump calculate-speed velocidade-poi * 0.96
+    ]
+    discover
   ]
-  diffuse chemical taxa-de-difusao
+
   ask patches [
-    set chemical chemical * (100 - taxa-de-evaporacao) / 100
+    set chemical chemical * (100 - (taxa-de-evaporacao / tps)) / 100
     recolor-patch
   ]
+
+  diffuse chemical (taxa-de-difusao / 100)
+
+  every 0.5 [
+    auction
+  ]
+
+  every 5 [
+    ask targets [
+      right ((random 60) - 30)
+    ]
+  ]
+
+  ;statistics
+  ;================================================================
+  set-current-plot "POI"
+  if numero-de-pois > 0[
+    set-current-plot-pen "Identificado"
+    plotxy ticks / tps (total-discovered / numero-de-pois)* 100
+    ;plotxy ticks / tps total-discovered
+    set-current-plot-pen "Tratado"
+    plotxy ticks / tps (total-treated / numero-de-pois)* 100
+    ;plotxy ticks / tps total-treated
+  ]
+
+  ;data and simulation control
+  ;================================================================
+  ifelse(simulation-time = "continuous")[
+    iteration
+  ]
+  [
+    iteration
+    if(total-ticks > tps * 60 * int simulation-time)[
+      stop
+      clear
+    ]
+  ]
+
+  set total-ticks (total-ticks + 1)
+
   tick
 end
 
-;;implementa-se os métodos secundários
-
-to attach-turtle  ;; turtle procedure
-  ;;inicia o contador
-  set count-group count-group + 1
-  ;; find a random patch to test inside the donut
-  let xd menor-raio + random (maior-raio - menor-raio)
-  let yd menor-raio + random (maior-raio - menor-raio)
-  if random 2 = 0 [ set xd (- xd) ]
-  if random 2 = 0 [ set yd (- yd) ]
-  ;; check for free turtles on that patch
-  let candidate one-of (pois-at xd yd) with [follower = nobody]
-  ;; if we didn't find a suitable turtle, stop
-  if candidate = nobody [ stop ]
-  ;; we're all set, so latch on!
-  ask candidate [ set follower myself ]
-  set leader candidate
+to clear
+  clear-turtles
+  clear-patches
+  clear-plot
+  setup
 end
 
-to unlink-turtle
-  if count-group > num-ticks[
-    set count-group 0
-    set leader nobody
+to clear-all-var
+  clear-all
+end
+
+to iteration
+  if (ticks + 1) > (tps * 60 * int time-of-iteration)[
+    set total-iteration (total-iteration + 1)
+    ;export to csv file
+    if (data-export = true)[
+      export-plot "POI" (word "data/data-" total-iteration ".csv")
+    ]
+    clear
   ]
 end
 
-to turn-turtle  ;; turtle procedure
-  ;; if we are still unattached...
-  ifelse leader = nobody
-  ;; do a somewhat random glide
-  [ rt random-float 70 - random-float 70 ]
-  ;; otherwise follow the leader
-  [ face leader ]
+to choose-color
+  ifelse ttype = 0 [
+    set typecolor orange
+  ]
+  [
+    ifelse ttype = 1[
+      set typecolor blue
+    ]
+    [
+      ifelse ttype = 2[
+        set typecolor yellow
+      ]
+      [
+        set typecolor red
+      ]
+    ]
+  ]
+end
+
+to choose-shape
+  ifelse ttype = 0 [
+    set shape "car"
+  ]
+  [
+    ifelse ttype = 1[
+      set shape "truck"
+    ]
+    [
+      ifelse ttype = 2[
+        set shape "car"
+      ]
+      [
+        set shape "truck"
+      ]
+    ]
+  ]
 end
 
 to recolor-patch
-  ifelse chemical > 1[
-   set pcolor scale-color green chemical 5 0.1
-  ][
-    set pcolor brown
+  ifelse mostrar-feromonio = true[
+    ifelse chemical >= 1[
+      set pcolor scale-color red chemical 0.5 8
+    ][
+      ifelse visited = true[
+        set pcolor 11
+      ][
+        set pcolor black
+      ]
+    ]
+  ]
+  [
+    set pcolor black
   ]
 end
 
-to uphill-chemical
+to auction
+  if any? (targets with [(done = false) and (discovered = true)])[
+    ask one-of (targets with [(done = false) and (discovered = true)])[
+      let my_type ttype
+      let me self
+      let candidates agents with [(ttarget = nobody) and (ttype = my_type) ]
+      let performer min-one-of candidates [distance myself]
+      if performer != nobody[
+        create-link-with performer
+        set done true
+        ask performer[
+          set ttarget me
+        ]
+      ]
+    ]
+  ]
+end
+
+to discover
+if any? (targets with [discovered = false])[
+  let closest min-one-of agents [distance myself]
+  if (closest != nobody) and (distance closest < 5)[
+    if discovered != true[
+      set discovered true
+      set total-discovered (total-discovered + 1)
+      set color typecolor
+    ]
+  ]
+]
+end
+
+to downhill-chemical
   let scent-ahead chemical-scent-at-angle   0
   let scent-right chemical-scent-at-angle  45
   let scent-left  chemical-scent-at-angle -45
-  if (scent-right > scent-ahead) or (scent-left > scent-ahead)[
-    ifelse scent-right > scent-left[
-      rt 45
+  if (scent-right < scent-ahead) or (scent-left < scent-ahead)[
+    ifelse scent-right < scent-left[
+      rt 30
     ][
-      lt 45
+      lt 30
     ]
   ]
 end
@@ -148,14 +271,44 @@ to-report chemical-scent-at-angle [angle]
   ]
   report [chemical] of p
 end
+
+to-report calculate-speed [speed]
+  let tile-size 15
+  let s  ((speed / 3.6)/ tps) / tile-size
+  report s
+end
+
+to join-convoy
+  if(modo-comboio = true)[
+    let xd 5
+    let yd 5
+    let my-type ttype
+    let tset other targets with [
+      (distance myself <= 10) and (ttype = my-type)
+    ]
+    let  candidate min-one-of tset [
+      distance myself
+    ]
+    ifelse candidate = nobody[
+      stop
+    ]
+    [
+      if (([leader] of candidate) != self)[
+        set leader candidate
+        set convoy-time 0
+        set convoy-timeout -1
+      ]
+    ]
+  ]
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
-210
+204
 10
-675
-496
-45
-45
+889
+716
+67
+67
 5.0
 1
 10
@@ -166,24 +319,24 @@ GRAPHICS-WINDOW
 1
 1
 1
--45
-45
--45
-45
-1
-1
+-67
+67
+-67
+67
+0
+0
 1
 ticks
-30.0
+10.0
 
 BUTTON
-5
-10
-101
-43
-Inicializar
-inicializar
-NIL
+7
+12
+62
+45
+go
+go
+T
 1
 T
 OBSERVER
@@ -194,12 +347,12 @@ NIL
 1
 
 BUTTON
-6
-46
-101
-79
-Reset
-reset
+66
+12
+124
+45
+setup
+setup
 NIL
 1
 T
@@ -210,172 +363,278 @@ NIL
 NIL
 1
 
-BUTTON
-104
-10
-202
-80
-Executar
-executar
-T
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
+PLOT
+898
+58
+1268
+254
+POI
+Tempo (s)
+Número de POI's
+0.0
+60.0
+0.0
+100.0
+true
+true
+"" ""
+PENS
+"Identificado" 1.0 0 -2674135 true "" ""
+"Tratado" 1.0 0 -16777216 true "" ""
 
-SLIDER
-8
-107
-204
-140
-num-vants
-num-vants
-0
-100
-4
+MONITOR
+899
+315
+1073
+360
+Mapa Coberto (%)
+(count patches with [visited = true] / (world-width * world-height)) * 100
+17
 1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-8
-144
-204
-177
-mum-pontos-interesse
-mum-pontos-interesse
-0
-100
-4
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-8
-202
-204
-235
-taxa-de-difusao
-taxa-de-difusao
-0
-1
-0.6
-0.1
-1
-%
-HORIZONTAL
-
-SLIDER
-8
-239
-205
-272
-taxa-de-evaporacao
-taxa-de-evaporacao
-0
-10
-10
-0.5
-1
-%
-HORIZONTAL
-
-SLIDER
-9
-300
-206
-333
-menor-raio
-menor-raio
-0
-100
-5
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-10
-337
-206
-370
-maior-raio
-maior-raio
-0
-100
-50
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-10
-374
-206
-407
-oscilacao
-oscilacao
-0
-100
-70
-1
-1
-NIL
-HORIZONTAL
-
-TEXTBOX
 11
-280
-161
-298
-Split/Merge POI:
-12
-0.0
-1
 
 SLIDER
-10
-411
-206
-444
-num-ticks
-num-ticks
+6
+160
+197
+193
+taxa-de-difusao
+taxa-de-difusao
 0
-10000
-500
+100
+1
+1
+1
+%
+HORIZONTAL
+
+SLIDER
+6
+196
+197
+229
+taxa-de-evaporacao
+taxa-de-evaporacao
+0
+10
+0.8
+0.05
+1
+% /s
+HORIZONTAL
+
+SLIDER
+6
+87
+196
+120
+numero-de-pois
+numero-de-pois
+0
+25
+25
 1
 1
 NIL
 HORIZONTAL
 
-TEXTBOX
-9
-183
-159
-201
-Feromônio:
+SLIDER
+6
+123
+196
+156
+numero-de-vants
+numero-de-vants
+1
+15
+10
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+6
+233
+197
+266
+velocidade-vant
+velocidade-vant
+0
+200
+200
+5
+1
+km/h
+HORIZONTAL
+
+SLIDER
+6
+269
+197
+302
+velocidade-poi
+velocidade-poi
+0
+120
+120
+5
+1
+km/h
+HORIZONTAL
+
+SWITCH
+8
+343
+198
+376
+mostrar-feromonio
+mostrar-feromonio
+1
+1
+-1000
+
+MONITOR
+899
+10
+1267
+55
+Tempo(s)
+int (ticks / tps)
+17
+1
+11
+
+MONITOR
+899
+266
+1072
+311
+POI Descobertos
+total-discovered
+17
+1
+11
+
+MONITOR
+1075
+266
+1268
+311
+POI Tratados
+total-treated
+17
+1
+11
+
+MONITOR
+1076
+315
+1270
+360
+Velocidade de Cobertura (% / s)
+(count patches with [visited = true] / (world-width * world-height)) * 100 / int ( ticks / tps )
+17
+1
+11
+
+SWITCH
+6
+306
+197
+339
+modo-comboio
+modo-comboio
+0
+1
+-1000
+
+BUTTON
+128
 12
-0.0
+195
+45
+NIL
+clear
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
 1
 
-TEXTBOX
-9
-88
-159
-106
-Ambiente:
-12
-0.0
+SWITCH
+900
+460
+1270
+493
+data-export
+data-export
+0
 1
+-1000
+
+CHOOSER
+900
+413
+1074
+458
+time-of-iteration
+time-of-iteration
+1 5 15 30 45 60 120 240 360 720 1400
+1
+
+CHOOSER
+1078
+412
+1270
+457
+simulation-time
+simulation-time
+"continuous" 1 5 15 30 45 60 120 240 360 720 1400
+8
+
+BUTTON
+39
+49
+153
+82
+NIL
+clear-all-var
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+MONITOR
+900
+364
+1072
+409
+Total de iterações
+simulation-time / time-of-iteration
+0
+1
+11
+
+MONITOR
+1076
+364
+1270
+409
+Iterações executadas
+total-iteration
+0
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -470,21 +729,6 @@ Polygon -16777216 true false 162 80 132 78 134 135 209 135 194 105 189 96 180 89
 Circle -7500403 true true 47 195 58
 Circle -7500403 true true 195 195 58
 
-car top
-true
-0
-Polygon -7500403 true true 151 8 119 10 98 25 86 48 82 225 90 270 105 289 150 294 195 291 210 270 219 225 214 47 201 24 181 11
-Polygon -16777216 true false 210 195 195 210 195 135 210 105
-Polygon -16777216 true false 105 255 120 270 180 270 195 255 195 225 105 225
-Polygon -16777216 true false 90 195 105 210 105 135 90 105
-Polygon -1 true false 205 29 180 30 181 11
-Line -7500403 false 210 165 195 165
-Line -7500403 false 90 165 105 165
-Polygon -16777216 true false 121 135 180 134 204 97 182 89 153 85 120 89 98 97
-Line -16777216 false 210 90 195 30
-Line -16777216 false 90 90 105 30
-Polygon -1 true false 95 29 120 30 119 11
-
 circle
 false
 0
@@ -578,23 +822,6 @@ Rectangle -7500403 true true 45 120 255 285
 Rectangle -16777216 true false 120 210 180 285
 Polygon -7500403 true true 15 120 150 15 285 120
 Line -16777216 false 30 120 270 120
-
-house colonial
-false
-0
-Rectangle -7500403 true true 270 75 285 255
-Rectangle -7500403 true true 45 135 270 255
-Rectangle -16777216 true false 124 195 187 256
-Rectangle -16777216 true false 60 195 105 240
-Rectangle -16777216 true false 60 150 105 180
-Rectangle -16777216 true false 210 150 255 180
-Line -16777216 false 270 135 270 255
-Polygon -7500403 true true 30 135 285 135 240 90 75 90
-Line -16777216 false 30 135 285 135
-Line -16777216 false 255 105 285 135
-Line -7500403 true 154 195 154 255
-Rectangle -16777216 true false 210 195 255 240
-Rectangle -16777216 true false 135 150 180 180
 
 leaf
 false
@@ -726,14 +953,14 @@ Polygon -10899396 true false 85 204 60 233 54 254 72 266 85 252 107 210
 Polygon -7500403 true true 119 75 179 75 209 101 224 135 220 225 175 261 128 261 81 224 74 135 88 99
 
 vant
-false
+true
 0
-Circle -7500403 false true 165 15 120
-Circle -7500403 false true 165 165 120
-Polygon -7500403 true true 240 75 225 60 60 225 75 240
-Polygon -7500403 true true 60 75 75 60 240 225 225 240
-Circle -7500403 false true 15 15 120
-Circle -7500403 false true 15 165 120
+Circle -7500403 false true 45 45 90
+Circle -7500403 false true 165 45 90
+Circle -7500403 false true 165 165 90
+Circle -7500403 false true 45 165 90
+Line -7500403 true 90 210 210 90
+Line -7500403 true 90 90 210 210
 
 wheel
 false
